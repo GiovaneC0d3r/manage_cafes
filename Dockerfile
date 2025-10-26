@@ -1,32 +1,43 @@
-# 1. Base PHP
-FROM php:8.2-fpm
-
-# 2. Instalar dependências do sistema
-RUN apt-get update && apt-get install -y \
-    libzip-dev unzip git curl nodejs npm libpq-dev && \
-    docker-php-ext-install pdo_pgsql zip
-
-# 3. Instalar Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# 4. Configurar diretório de trabalho
-WORKDIR /var/www/html
-
-# 5. Copiar arquivos do projeto
-COPY . .
-
-# 6. Instalar dependências PHP
-RUN composer install --no-dev --optimize-autoloader
-
-# 7. Instalar dependências JS e compilar assets
+# Etapa 1: Build de assets
+FROM node:20 AS build
+WORKDIR /app
+COPY package*.json ./
 RUN npm install
+COPY . .
 RUN npm run build
 
-# 8. Permissões
+# Etapa 2: PHP + Nginx para produção
+FROM php:8.2-fpm
+
+# Instalar dependências
+RUN apt-get update && apt-get install -y \
+    nginx \
+    libzip-dev \
+    libpq-dev \
+    unzip \
+    git \
+    curl && \
+    docker-php-ext-install pdo_pgsql zip
+
+# Instalar Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Copiar aplicação
+WORKDIR /var/www/html
+COPY . .
+COPY --from=build /app/public/build ./public/build
+
+# Instalar dependências PHP
+RUN composer install --no-dev --optimize-autoloader
+
+# Permissões
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# 9. Expor porta
-EXPOSE 8000
+# Copiar configuração do Nginx
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
 
-# 10. Comando para rodar Laravel
-CMD php artisan serve --host=0.0.0.0 --port=8000
+# Expor porta
+EXPOSE 8080
+
+# Start Nginx + PHP-FPM
+CMD service nginx start && php-fpm
