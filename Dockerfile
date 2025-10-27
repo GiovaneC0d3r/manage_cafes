@@ -1,4 +1,5 @@
-FROM richarvey/nginx-php-fpm:1.7.2
+FROM bitnami/nginx-fpm:1-debian-11
+
 
 COPY . .
 
